@@ -306,8 +306,8 @@ function ExportBar({ title, getHtml, getText, onSave, saved }) {
 function NextSteps({ go, hide = [] }) {
   const steps = [
     ["sequence", "Créer les séquences"], ["activites", "Générer des activités"],
-    ["evaluations", "Créer l'évaluation"], ["deroule", "Construire le déroulé"],
-    ["adaptation", "Adapter au public"],
+    ["exercices", "Créer un exercice"], ["evaluations", "Créer l'évaluation"],
+    ["deroule", "Construire le déroulé"], ["adaptation", "Adapter au public"],
   ].filter(([k]) => !hide.includes(k));
   return (
     <div className="next">
@@ -1043,6 +1043,18 @@ const EXO_CSS = `
 .exo-variant{border:1px solid var(--border);border-radius:9px;padding:14px 16px;margin:10px 0;background:var(--white)}
 .exo-variant:hover{border-color:var(--pine)}
 .exo-variant h4{font-family:var(--serif);font-size:16px;margin-bottom:4px}
+.exo-doc-intro{font-size:13.5px;color:var(--muted);margin-bottom:10px}
+.exo-doc-paper{background:#fff;border:1px solid var(--border);border-radius:8px;padding:22px 26px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+.exo-doc-title{border-bottom:2px solid var(--pine);margin-bottom:14px;padding-bottom:6px}
+.exo-doc-title-input{width:100%;border:0;border-radius:4px;font-family:var(--serif);font-size:22px;font-weight:600;color:var(--ink);padding:2px 4px;background:#FFFDF7}
+.exo-doc-title-input:focus{outline:2px solid var(--pine);outline-offset:1px}
+.exo-doc-sec{margin:14px 0}
+.exo-doc-h{font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--pine);border-bottom:1px solid var(--border);padding-bottom:3px;margin-bottom:8px}
+.exo-doc-field{display:flex;align-items:baseline;gap:10px;margin:6px 0}
+.exo-doc-field label{flex:0 0 150px;font-size:13px;font-weight:600;color:var(--muted)}
+.exo-doc-field input,.exo-doc-field textarea{flex:1;border:1px solid var(--border);border-radius:6px;padding:6px 9px;font-size:14px;font-family:var(--sans);background:#FFFDF7}
+.exo-doc-field input:focus,.exo-doc-field textarea:focus{outline:2px solid var(--pine);outline-offset:-1px;border-color:var(--pine)}
+@media(max-width:560px){.exo-doc-field{flex-direction:column;gap:2px}.exo-doc-field label{flex:none}}
 `;
 
 const norm = (s) => String(s ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
@@ -1061,6 +1073,7 @@ const EXO_SCHEMA = `{
  "blocks":[ /* un ou plusieurs blocs parmi : */
    {"kind":"text","content":"texte/consigne intermédiaire en markdown (## titres, **gras**)"},
    {"kind":"fill","text":"phrase avec des trous notés [[1]] et [[2]]","blanks":[{"id":1,"answer":"réponse|synonyme accepté","hint":"indice court facultatif"}]},
+   {"kind":"form","intro":"consigne courte","doctitre":"titre du document (ex: le nom de la personne pour un CV, ou 'Formulaire d'inscription')","sections":[{"heading":"Informations personnelles","fields":[{"label":"Nom","multiline":false,"hint":"placeholder facultatif"},{"label":"Missions principales","multiline":true,"hint":"une par ligne"}]}]},
    {"kind":"mcq","question":"...","options":["A","B","C","D"],"answer":0,"explanation":"pourquoi"},
    {"kind":"multi","question":"...","options":["..."],"answers":[0,2],"explanation":"..."},
    {"kind":"truefalse","statement":"affirmation","answer":true,"explanation":"..."},
@@ -1074,7 +1087,10 @@ const EXO_SCHEMA = `{
 
 const EXO_RULES = `RÈGLES :
 - Adapte le NOMBRE d'items à la durée (un exercice de 10 min ne contient pas 40 questions).
-- Un "CV à trous" ou "formulaire" = plusieurs blocs "text" (titres de rubriques) + plusieurs blocs "fill".
+- DISTINCTION IMPORTANTE :
+  • Si l'apprenant doit PRODUIRE un document avec SES PROPRES informations (CV, lettre de motivation, formulaire d'inscription, fiche...), utilise le bloc "form". Il n'y a PAS de bonne réponse : chaque apprenant remplit le sien, puis l'exporte. N'invente PAS de fausses réponses attendues.
+  • Utilise "fill" UNIQUEMENT pour un vrai texte à trous où il faut RETROUVER des mots précis (là il existe une réponse correcte).
+- Donc un "CV à trous" / "CV à compléter" doit être un bloc "form" avec des sections réalistes (Informations personnelles, Profil, Expériences, Formation, Compétences) — pas des "fill" avec réponses.
 - Pour "fill", place bien les trous [[1]], [[2]]... dans "text", et sépare les réponses acceptables par | dans "answer".
 - Adapte la difficulté : Débutant = beaucoup d'indices ; Avancé = situation ouverte, peu d'indices.
 - Réponds UNIQUEMENT avec le JSON, sans texte autour.`;
@@ -1086,6 +1102,37 @@ function BlockView({ block, val, setVal, submitted, teacher, res }) {
   switch (b.kind) {
     case "text":
       return <div className="md" dangerouslySetInnerHTML={{ __html: mdToHtml(b.content || "") }} />;
+
+    case "form": {
+      // Document que l'apprenant produit avec SES infos : pas de correction.
+      const vals = val || {};
+      return (
+        <div className="exo-doc">
+          {b.intro && <p className="exo-doc-intro">{b.intro}</p>}
+          <div className="exo-doc-paper">
+            {b.doctitre && <div className="exo-doc-title">
+              <input className="exo-doc-title-input" value={vals["__titre"] || ""} placeholder={b.doctitre} onChange={e => setVal({ ...vals, ["__titre"]: e.target.value })} />
+            </div>}
+            {(b.sections || []).map((sec, si) => (
+              <div className="exo-doc-sec" key={si}>
+                {sec.heading && <div className="exo-doc-h">{sec.heading}</div>}
+                {(sec.fields || []).map((f, fi) => {
+                  const key = si + "-" + fi;
+                  return (
+                    <div className="exo-doc-field" key={fi}>
+                      <label>{f.label}</label>
+                      {f.multiline
+                        ? <textarea rows={3} value={vals[key] || ""} placeholder={f.hint || ""} onChange={e => setVal({ ...vals, [key]: e.target.value })} />
+                        : <input value={vals[key] || ""} placeholder={f.hint || ""} onChange={e => setVal({ ...vals, [key]: e.target.value })} />}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
 
     case "fill": {
       const parts = String(b.text || "").split(/(\[\[\d+\]\])/g);
@@ -1305,6 +1352,7 @@ const fillOk = (answer, learner) => {
 // Correction locale d'un bloc -> {auto, total, ok} ; open -> auto:false
 function gradeBlock(b, val) {
   switch (b.kind) {
+    case "form": return { auto: false, total: 0, ok: 0 };
     case "fill": {
       const blanks = b.blanks || []; let ok = 0;
       blanks.forEach(bl => { if (fillOk(bl.answer, (val || {})[bl.id])) ok++; });
@@ -1392,21 +1440,40 @@ Renvoie l'exercice MODIFIÉ, dans le MÊME schéma JSON, complet. ${EXO_RULES}` 
   const delBlock = (i) => { setExo({ ...exo, blocks: blocks.filter((_, x) => x !== i) }); setSaved(false); };
   const moveBlock = (i, d) => { const a = [...blocks]; const t = i + d; if (t < 0 || t >= a.length) return; [a[i], a[t]] = [a[t], a[i]]; setExo({ ...exo, blocks: a }); setSaved(false); };
 
-  // export
-  const html = () => `<h3>${esc(exo.titre)}</h3><p><em>${esc(exo.consigne || "")}</em></p>` +
-    blocks.map(b => {
+  // export — mode "apprenant" = document/exercice rempli par l'élève (sans correction) ;
+  //          mode "formateur" = version corrigée (réponses attendues visibles).
+  const buildHtml = (mode) => {
+    const corr = mode === "formateur";
+    return `<h3>${esc(exo.titre)}</h3><p><em>${esc(exo.consigne || "")}</em></p>` +
+    blocks.map((b, bi) => {
+      const a = answers[bi];
       if (b.kind === "text") return mdToHtml(b.content || "");
-      if (b.kind === "fill") return `<p>${esc(b.text || "").replace(/\[\[(\d+)\]\]/g, (m, id) => "____(" + ((b.blanks || []).find(x => +x.id === +id)?.answer || "") + ")")}</p>`;
-      if (b.kind === "mcq") return `<p><b>${esc(b.question)}</b></p><ul>${(b.options || []).map((o, i) => `<li>${i === b.answer ? "✔ " : ""}${esc(o)}</li>`).join("")}</ul>`;
-      if (b.kind === "multi") return `<p><b>${esc(b.question)}</b></p><ul>${(b.options || []).map((o, i) => `<li>${(b.answers || []).includes(i) ? "✔ " : ""}${esc(o)}</li>`).join("")}</ul>`;
-      if (b.kind === "truefalse") return `<p><b>${esc(b.statement)}</b> → ${b.answer ? "Vrai" : "Faux"}</p>`;
-      if (b.kind === "order") return `<p><b>${esc(b.instruction || "")}</b><br>${(b.correctOrder || []).map((oi, k) => `${k + 1}. ${esc((b.items || [])[oi])}`).join("<br>")}</p>`;
-      if (b.kind === "match") return `<p><b>${esc(b.instruction || "")}</b></p><ul>${(b.pairs || []).map(([li, ri]) => `<li>${esc((b.left || [])[li])} → ${esc((b.right || [])[ri])}</li>`).join("")}</ul>`;
-      if (b.kind === "classify") return `<p><b>${esc(b.instruction || "")}</b></p><ul>${(b.items || []).map(it => `<li>${esc(it.text)} → ${esc(it.category)}</li>`).join("")}</ul>`;
-      if (b.kind === "open") return `<p><b>${esc(b.question)}</b><br><em>Attendu : ${esc(b.guidance || "")}</em></p>`;
-      if (b.kind === "scenario") return `<p><b>${esc(b.intro || "Scénario")}</b></p>` + (b.steps || []).map((st, si) => `<p>${si + 1}. ${esc(st.situation)}<br>${(st.choices || []).map(c => `${c.correct ? "✔ " : "• "}${esc(c.text)}`).join("<br>")}</p>`).join("");
+      if (b.kind === "form") {
+        const v = a || {};
+        let out = "";
+        if (b.doctitre) out += `<h2 style="border-bottom:2px solid #2E5E4E">${esc(v["__titre"] || b.doctitre)}</h2>`;
+        (b.sections || []).forEach((sec, si) => {
+          out += `<h3>${esc(sec.heading || "")}</h3><table>`;
+          (sec.fields || []).forEach((f, fi) => {
+            out += `<tr><th style="width:180px">${esc(f.label)}</th><td>${esc(v[si + "-" + fi] || (corr ? "" : "____")).replace(/\n/g, "<br>")}</td></tr>`;
+          });
+          out += `</table>`;
+        });
+        return out;
+      }
+      if (b.kind === "fill") return `<p>${esc(b.text || "").replace(/\[\[(\d+)\]\]/g, (m, id) => corr ? "____(" + ((b.blanks || []).find(x => +x.id === +id)?.answer || "") + ")" : "__" + ((a || {})[id] ? esc((a || {})[id]) : "____") + "__")}</p>`;
+      if (b.kind === "mcq") return `<p><b>${esc(b.question)}</b></p><ul>${(b.options || []).map((o, i) => `<li>${corr && i === b.answer ? "✔ " : (!corr && a === i ? "☑ " : "")}${esc(o)}</li>`).join("")}</ul>`;
+      if (b.kind === "multi") return `<p><b>${esc(b.question)}</b></p><ul>${(b.options || []).map((o, i) => `<li>${corr && (b.answers || []).includes(i) ? "✔ " : (!corr && (a || []).includes(i) ? "☑ " : "")}${esc(o)}</li>`).join("")}</ul>`;
+      if (b.kind === "truefalse") return `<p><b>${esc(b.statement)}</b> → ${corr ? (b.answer ? "Vrai" : "Faux") : (a === true ? "Vrai" : a === false ? "Faux" : "____")}</p>`;
+      if (b.kind === "order") { const seq = corr ? (b.correctOrder || []) : (a || (b.items || []).map((_, i) => i)); return `<p><b>${esc(b.instruction || "")}</b><br>${seq.map((oi, k) => `${k + 1}. ${esc((b.items || [])[oi])}`).join("<br>")}</p>`; }
+      if (b.kind === "match") return `<p><b>${esc(b.instruction || "")}</b></p><ul>${(b.left || []).map((l, li) => { const ri = corr ? ((b.pairs || []).find(p => p[0] === li) || [])[1] : (a || {})[li]; return `<li>${esc(l)} → ${esc((b.right || [])[ri] || "____")}</li>`; }).join("")}</ul>`;
+      if (b.kind === "classify") return `<p><b>${esc(b.instruction || "")}</b></p><ul>${(b.items || []).map((it, ii) => `<li>${esc(it.text)} → ${esc(corr ? it.category : ((a || {})[ii] || "____"))}</li>`).join("")}</ul>`;
+      if (b.kind === "open") return `<p><b>${esc(b.question)}</b><br>${corr ? "<em>Attendu : " + esc(b.guidance || "") + "</em>" : esc(a || "____")}</p>`;
+      if (b.kind === "scenario") return `<p><b>${esc(b.intro || "Scénario")}</b></p>` + (b.steps || []).map((st, si) => `<p>${si + 1}. ${esc(st.situation)}<br>${(st.choices || []).map((c, ci) => `${corr && c.correct ? "✔ " : (!corr && (a || {})[si] === ci ? "☑ " : "• ")}${esc(c.text)}`).join("<br>")}</p>`).join("");
       return "";
-    }).join("");
+    }).join("") + (corr && exo.pourquoi ? `<h3>Pourquoi cet exercice ?</h3><p>${esc(exo.pourquoi)}</p>` : "");
+  };
+  const html = () => buildHtml(teacher ? "formateur" : "apprenant");
   const txt = () => html().replace(/<[^>]+>/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
 
   return (
@@ -1465,16 +1532,22 @@ Renvoie l'exercice MODIFIÉ, dans le MÊME schéma JSON, complet. ${EXO_RULES}` 
 
       {/* Barre d'action apprenant */}
       {!teacher && !edit && (
-        <div className="bar">
-          {!submitted
-            ? <button className="btn" onClick={() => setSubmitted(true)}>Valider mes réponses</button>
-            : <>
-                <span className="score-badge">{score.ok} / {score.total}</span>
-                <span style={{ fontSize: 13, color: "var(--muted)" }}>réponses auto-corrigées justes</span>
-                {openBlocks.length > 0 && <button className="btn sm" onClick={correctOpen} disabled={correcting}>{correcting ? <><span className="spin" /> Correction IA…</> : "Corriger les réponses ouvertes avec l'IA"}</button>}
-                <button className="btn sm ghost" onClick={() => { setSubmitted(false); setAnswers({}); setOpenCorr({}); }}>Recommencer</button>
-              </>}
-        </div>
+        <>
+          <div className="bar">
+            {score.total > 0 && !submitted &&
+              <button className="btn" onClick={() => setSubmitted(true)}>Valider mes réponses</button>}
+            {score.total > 0 && submitted && <>
+              <span className="score-badge">{score.ok} / {score.total}</span>
+              <span style={{ fontSize: 13, color: "var(--muted)" }}>réponses auto-corrigées justes</span>
+              {openBlocks.length > 0 && <button className="btn sm" onClick={correctOpen} disabled={correcting}>{correcting ? <><span className="spin" /> Correction IA…</> : "Corriger les réponses ouvertes avec l'IA"}</button>}
+              <button className="btn sm ghost" onClick={() => { setSubmitted(false); setAnswers({}); setOpenCorr({}); }}>Recommencer</button>
+            </>}
+            {score.total === 0 && openBlocks.length > 0 && !submitted &&
+              <button className="btn" onClick={() => { setSubmitted(true); correctOpen(); }} disabled={correcting}>{correcting ? <><span className="spin" /> Correction IA…</> : "Valider et corriger avec l'IA"}</button>}
+          </div>
+          <ExportBar title={exo.titre || "Exercice"} getHtml={html} getText={txt} />
+          <p style={{ fontSize: 12.5, color: "var(--muted)", marginTop: -6 }}>L'export reprend le document tel que vous l'avez rempli.</p>
+        </>
       )}
 
       {/* Outils formateur */}
@@ -1495,7 +1568,7 @@ Renvoie l'exercice MODIFIÉ, dans le MÊME schéma JSON, complet. ${EXO_RULES}` 
               <button className="btn sm" onClick={runImprove} disabled={busy || !improve.trim()}>{busy ? <><span className="spin" /> …</> : "Appliquer"}</button>
             </div>
           </div>
-          <ExportBar title={exo.titre || "Exercice"} getHtml={html} getText={txt} />
+          <ExportBar title={(exo.titre || "Exercice") + " (corrigé)"} getHtml={html} getText={txt} />
         </>
       )}
     </div>
