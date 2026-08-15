@@ -82,6 +82,29 @@ vercel dev
 
 ---
 
+## 🧩 Module « Créer un exercice »
+
+Nouvelle fonctionnalité centrale : génération d'exercices **réellement interactifs**.
+
+- L'IA choisit le format le plus pertinent (ou vous l'imposez en texte libre — elle
+  peut inventer un format non prévu, ex. « repérer les erreurs dans une lettre »).
+- Formats interactifs gérés : texte à trous, CV à trous / formulaire, QCM, choix
+  multiples, vrai/faux, associer, remettre dans l'ordre, classement, scénario à
+  choix, question ouverte. L'architecture est extensible : chaque format est un
+  « bloc » typé que l'interface sait afficher — en ajouter un nouveau ne casse rien.
+- **Vue apprenant** (il réalise l'exercice) / **Vue formateur** (correction, attendus,
+  compétences, explication « Pourquoi cet exercice ? »).
+- **Correction** : automatique pour les formats fermés ; pour les questions ouvertes,
+  bouton « Corriger avec l'IA » qui évalue le **sens** de la réponse
+  (Correct / Partiellement correct / À revoir).
+- **✏️ Éditer** (titre, consigne, difficulté, durée, déplacer/supprimer des blocs) et
+  **✨ Améliorer avec l'IA** (« rends plus difficile », « ajoute 5 questions »,
+  « transforme en jeu »…).
+- Enregistrement dans la **banque d'exercices** (bibliothèque), réutilisable.
+
+> L'exercice peut être généré à partir d'un support de cours collé (ou fichier .txt/.md).
+> L'import direct PDF / PowerPoint / Word n'est pas encore branché — colle le texte pour l'instant.
+
 ## Notes
 
 - **Modèle IA** : `llama-3.3-70b-versatile` (Groq, gratuit). Pour en changer,

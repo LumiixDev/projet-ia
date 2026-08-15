@@ -246,6 +246,8 @@ const ROLES = {
   analyste: SOCLE + `\nTu es l'analyste pédagogique : tu audites des déroulés, programmes et supports existants avec un regard critique, bienveillant et argumenté.`,
   adaptation: SOCLE + `\nTu es l'expert en adaptation : tu transposes une formation vers un autre public, une autre modalité ou un autre format en CONSERVANT l'objectif pédagogique, et tu expliques ce que tu as changé et pourquoi.`,
   deroule: SOCLE + `\nTu es le concepteur de déroulés pédagogiques : tu découpes une formation en temps réalistes (accueil, séquences, pauses, évaluations, clôture) avec horaires cohérents.`,
+  exercice: SOCLE + `\nTu es le concepteur d'exercices interactifs. Ta règle absolue : PERTINENCE PÉDAGOGIQUE avant la variété et l'effet visuel. Avant de produire, tu raisonnes : objectif → compétence → comportement observable → format d'exercice qui travaille réellement cette compétence → niveau de l'apprenant → durée → mode de correction. Tu ne produis pas systématiquement un QCM ; tu choisis le format le plus adapté. Tu dimensionnes le nombre d'items selon la durée.`,
+  correcteur: SOCLE + `\nTu es le correcteur. Pour une réponse ouverte, tu évalues le SENS de la réponse, pas une correspondance mot à mot. Tu es bienveillant mais exigeant, et tu justifies brièvement.`,
 };
 
 function ctxText(ctx) {
@@ -357,6 +359,7 @@ function Home({ go }) {
     ["📚", "Créer une séquence", "Séquence complète : objectif, méthode, déroulement, évaluation", "sequence"],
     ["🎯", "Formuler un objectif", "Transformer une intention en objectif observable (Bloom)", "objectifs"],
     ["💡", "Trouver une activité", "Mises en situation, études de cas, jeux de rôle…", "activites"],
+    ["🧩", "Créer un exercice", "Exercice interactif adapté à votre objectif, avec correction", "exercices"],
     ["📝", "Créer une évaluation", "QCM, quiz, questions ouvertes, cas pratiques", "evaluations"],
     ["🔍", "Analyser une formation", "Audit d'un déroulé ou programme existant", "analyse"],
     ["🔄", "Adapter une formation", "Autre public, autre modalité, autre format", "adaptation"],
@@ -989,6 +992,659 @@ function ProjectViewer({ project, go }) {
   );
 }
 
+/* ============================================================
+   MODULE EXERCICES INTERACTIFS
+   - L'IA produit une STRUCTURE de données (blocks typés).
+   - L'interface interprète chaque "kind" et affiche le bon composant.
+   - Ajouter un nouveau type = ajouter un "kind" + son rendu, sans tout refaire.
+   ============================================================ */
+
+const EXO_CSS = `
+.exo-wrap{background:var(--white);border:1px solid var(--border);border-radius:10px;padding:22px 24px}
+.exo-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:4px}
+.exo-title{font-family:var(--serif);font-size:20px;font-weight:600}
+.exo-meta{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 14px}
+.exo-consigne{background:var(--sage);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-size:13.5px;margin-bottom:16px}
+.blk{padding:14px 0;border-bottom:1px solid var(--border)}
+.blk:last-child{border-bottom:0}
+.blk-q{font-weight:600;margin-bottom:8px}
+.opt{display:flex;align-items:flex-start;gap:9px;padding:7px 10px;border:1px solid var(--border);border-radius:8px;margin:5px 0;cursor:pointer;font-size:14px;background:var(--white)}
+.opt:hover{background:var(--sage)}
+.opt.sel{border-color:var(--pine);background:var(--sage)}
+.opt.ok{border-color:#2E7D5B;background:#E7F3EC}
+.opt.ko{border-color:var(--danger);background:#F7E8E5}
+.opt input{margin-top:2px}
+.exo-fill{border:1px solid var(--border);border-radius:6px;padding:2px 6px;font-size:14px;min-width:120px;
+  font-family:var(--sans);background:#FFFDF7}
+.exo-fill.ok{border-color:#2E7D5B;background:#E7F3EC}
+.exo-fill.ko{border-color:var(--danger);background:#F7E8E5}
+.tf-btns{display:flex;gap:8px}
+.tf-btns button{padding:6px 16px;border:1px solid var(--border);border-radius:7px;background:var(--white);cursor:pointer;font-size:14px}
+.tf-btns button.sel{border-color:var(--pine);background:var(--sage);font-weight:600}
+.order-item,.classify-item{display:flex;align-items:center;gap:10px;border:1px solid var(--border);border-radius:8px;
+  padding:8px 10px;margin:5px 0;background:var(--white);font-size:14px}
+.order-item .mv{display:flex;flex-direction:column;gap:2px}
+.order-item .mv button{border:1px solid var(--border);background:var(--white);width:22px;height:18px;border-radius:4px;cursor:pointer;font-size:10px;line-height:1;color:var(--muted)}
+.match-row,.classify-item{display:flex;align-items:center;gap:10px;margin:6px 0}
+.match-row>span,.classify-item>span{flex:1;font-size:14px}
+.match-row select,.classify-item select{padding:6px 8px;border:1px solid var(--border);border-radius:7px;font-size:13.5px;min-width:150px}
+.scen-step{border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin:8px 0;background:var(--white)}
+.scen-choice{display:block;width:100%;text-align:left;border:1px solid var(--border);border-radius:7px;padding:8px 11px;margin:5px 0;background:var(--white);cursor:pointer;font-size:14px}
+.scen-choice:hover{background:var(--sage)}
+.scen-choice.ok{border-color:#2E7D5B;background:#E7F3EC}
+.scen-choice.ko{border-color:var(--danger);background:#F7E8E5}
+.scen-fb{font-size:13px;color:var(--muted);margin-top:6px;padding-left:4px;border-left:2px solid var(--border)}
+.corr{margin-top:8px;font-size:13px;background:var(--sage);border-radius:6px;padding:7px 10px}
+.corr.ok{background:#E7F3EC}.corr.partial{background:#FBF0DE}.corr.ko{background:#F7E8E5}
+.score-badge{font-family:var(--serif);font-size:22px;font-weight:600;color:var(--pine)}
+.role-toggle{display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.role-toggle button{border:0;padding:7px 14px;background:var(--white);cursor:pointer;font-size:13px;font-weight:600;color:var(--muted)}
+.role-toggle button.on{background:var(--pine);color:#fff}
+.exo-variant{border:1px solid var(--border);border-radius:9px;padding:14px 16px;margin:10px 0;background:var(--white)}
+.exo-variant:hover{border-color:var(--pine)}
+.exo-variant h4{font-family:var(--serif);font-size:16px;margin-bottom:4px}
+`;
+
+const norm = (s) => String(s ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
+const arrEq = (a, b) => Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((v, i) => v === b[i]);
+
+// Schéma transmis à l'IA (documentation des "kind" possibles).
+const EXO_SCHEMA = `{
+ "type":"nom court du format choisi",
+ "titre":"titre de l'exercice",
+ "consigne":"consigne claire pour l'apprenant",
+ "objectif":"objectif pédagogique visé",
+ "competences":"compétence(s) travaillée(s)",
+ "difficulte":"Débutant | Intermédiaire | Avancé",
+ "duree":"ex: 15 min",
+ "pourquoi":"2-3 phrases : pourquoi ce format est le plus pertinent pour cet objectif et ce public",
+ "blocks":[ /* un ou plusieurs blocs parmi : */
+   {"kind":"text","content":"texte/consigne intermédiaire en markdown (## titres, **gras**)"},
+   {"kind":"fill","text":"phrase avec des trous notés [[1]] et [[2]]","blanks":[{"id":1,"answer":"réponse|synonyme accepté","hint":"indice court facultatif"}]},
+   {"kind":"mcq","question":"...","options":["A","B","C","D"],"answer":0,"explanation":"pourquoi"},
+   {"kind":"multi","question":"...","options":["..."],"answers":[0,2],"explanation":"..."},
+   {"kind":"truefalse","statement":"affirmation","answer":true,"explanation":"..."},
+   {"kind":"order","instruction":"remets dans l'ordre","items":["étape présentée en désordre"],"correctOrder":[2,0,1]},
+   {"kind":"match","instruction":"associe","left":["terme"],"right":["définition"],"pairs":[[0,0]]},
+   {"kind":"classify","instruction":"classe chaque élément","categories":["Bonne pratique","Mauvaise pratique"],"items":[{"text":"...","category":"Bonne pratique"}]},
+   {"kind":"open","question":"question ouverte","guidance":"éléments attendus dans une bonne réponse","sample":"exemple de réponse correcte"},
+   {"kind":"scenario","intro":"mise en situation","steps":[{"situation":"...","choices":[{"text":"...","correct":true,"feedback":"..."}]}]}
+ ]
+}`;
+
+const EXO_RULES = `RÈGLES :
+- Adapte le NOMBRE d'items à la durée (un exercice de 10 min ne contient pas 40 questions).
+- Un "CV à trous" ou "formulaire" = plusieurs blocs "text" (titres de rubriques) + plusieurs blocs "fill".
+- Pour "fill", place bien les trous [[1]], [[2]]... dans "text", et sépare les réponses acceptables par | dans "answer".
+- Adapte la difficulté : Débutant = beaucoup d'indices ; Avancé = situation ouverte, peu d'indices.
+- Réponds UNIQUEMENT avec le JSON, sans texte autour.`;
+
+/* ---- Rendu d'un bloc en mode apprenant/formateur ---- */
+function BlockView({ block, val, setVal, submitted, teacher, res }) {
+  const b = block || {};
+  const show = submitted || teacher; // afficher la correction ?
+  switch (b.kind) {
+    case "text":
+      return <div className="md" dangerouslySetInnerHTML={{ __html: mdToHtml(b.content || "") }} />;
+
+    case "fill": {
+      const parts = String(b.text || "").split(/(\[\[\d+\]\])/g);
+      const answers = val || {};
+      return (
+        <div style={{ fontSize: 14, lineHeight: 2 }}>
+          {parts.map((p, i) => {
+            const m = p.match(/\[\[(\d+)\]\]/);
+            if (!m) return <span key={i} dangerouslySetInnerHTML={{ __html: mdToHtml(p).replace(/^<p>|<\/p>$/g, "") }} />;
+            const id = +m[1];
+            const blank = (b.blanks || []).find(x => +x.id === id) || {};
+            const learner = answers[id] || "";
+            let cls = "exo-fill";
+            if (show && learner) cls += fillOk(blank.answer, learner) ? " ok" : " ko";
+            return (
+              <span key={i}>
+                <input className={cls} value={learner} placeholder={teacher ? "" : (blank.hint || "…")}
+                  disabled={submitted && !teacher}
+                  onChange={e => setVal({ ...answers, [id]: e.target.value })} aria-label={"trou " + id} />
+                {show && <span style={{ fontSize: 12, color: "var(--pine)", margin: "0 6px" }}>[{blank.answer}]</span>}
+              </span>
+            );
+          })}
+        </div>
+      );
+    }
+
+    case "mcq":
+      return (
+        <div>
+          <div className="blk-q">{b.question}</div>
+          {(b.options || []).map((o, i) => {
+            let cls = "opt" + (val === i ? " sel" : "");
+            if (show) { if (i === b.answer) cls += " ok"; else if (val === i) cls += " ko"; }
+            return (
+              <label key={i} className={cls}>
+                <input type="radio" checked={val === i} disabled={submitted && !teacher} onChange={() => setVal(i)} />
+                <span>{o}</span>
+              </label>
+            );
+          })}
+          {show && b.explanation && <div className="corr">{b.explanation}</div>}
+        </div>
+      );
+
+    case "multi": {
+      const sel = val || [];
+      const toggle = (i) => setVal(sel.includes(i) ? sel.filter(x => x !== i) : [...sel, i]);
+      return (
+        <div>
+          <div className="blk-q">{b.question} <span style={{ fontWeight: 400, color: "var(--muted)", fontSize: 12.5 }}>(plusieurs réponses)</span></div>
+          {(b.options || []).map((o, i) => {
+            let cls = "opt" + (sel.includes(i) ? " sel" : "");
+            if (show) { if ((b.answers || []).includes(i)) cls += " ok"; else if (sel.includes(i)) cls += " ko"; }
+            return (
+              <label key={i} className={cls}>
+                <input type="checkbox" checked={sel.includes(i)} disabled={submitted && !teacher} onChange={() => toggle(i)} />
+                <span>{o}</span>
+              </label>
+            );
+          })}
+          {show && b.explanation && <div className="corr">{b.explanation}</div>}
+        </div>
+      );
+    }
+
+    case "truefalse":
+      return (
+        <div>
+          <div className="blk-q">{b.statement}</div>
+          <div className="tf-btns">
+            {[["Vrai", true], ["Faux", false]].map(([lbl, v]) => {
+              let cls = val === v ? "sel" : "";
+              if (show) { if (v === b.answer) cls = "sel"; }
+              return <button key={lbl} className={cls} disabled={submitted && !teacher} onClick={() => setVal(v)}>{lbl}</button>;
+            })}
+          </div>
+          {show && <div className={"corr " + (submitted && val === b.answer ? "ok" : "")}>Réponse : <b>{b.answer ? "Vrai" : "Faux"}</b>. {b.explanation || ""}</div>}
+        </div>
+      );
+
+    case "order": {
+      const items = b.items || [];
+      const cur = val || items.map((_, i) => i); // arrangement = liste d'index d'origine
+      const move = (pos, d) => {
+        const a = [...cur]; const t = pos + d;
+        if (t < 0 || t >= a.length) return;
+        [a[pos], a[t]] = [a[t], a[pos]]; setVal(a);
+      };
+      const correct = teacher ? (b.correctOrder || []) : cur;
+      const arrangement = teacher ? (b.correctOrder || items.map((_, i) => i)) : cur;
+      return (
+        <div>
+          <div className="blk-q">{b.instruction || "Remets dans l'ordre"}</div>
+          {arrangement.map((origIdx, pos) => (
+            <div className="order-item" key={pos}>
+              {!teacher && <span className="mv"><button disabled={submitted} onClick={() => move(pos, -1)} aria-label="monter">▲</button><button disabled={submitted} onClick={() => move(pos, 1)} aria-label="descendre">▼</button></span>}
+              <span style={{ flex: 1 }}>{pos + 1}. {items[origIdx]}</span>
+              {show && !teacher && <span style={{ fontSize: 12, color: cur[pos] === (b.correctOrder || [])[pos] ? "#2E7D5B" : "var(--danger)" }}>{cur[pos] === (b.correctOrder || [])[pos] ? "✓" : "✗"}</span>}
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    case "match": {
+      const chosen = val || {};
+      return (
+        <div>
+          <div className="blk-q">{b.instruction || "Associe les éléments"}</div>
+          {(b.left || []).map((l, li) => {
+            const good = (b.pairs || []).find(p => p[0] === li);
+            const teacherPick = good ? good[1] : "";
+            const pick = teacher ? teacherPick : (chosen[li] ?? "");
+            const ok = show && chosen[li] === teacherPick;
+            return (
+              <div className="match-row" key={li}>
+                <span>{l}</span>
+                <span aria-hidden>→</span>
+                <select value={pick} disabled={submitted || teacher} onChange={e => setVal({ ...chosen, [li]: e.target.value === "" ? "" : +e.target.value })}
+                  style={show && !teacher ? { borderColor: ok ? "#2E7D5B" : "var(--danger)" } : {}}>
+                  <option value="">—</option>
+                  {(b.right || []).map((r, ri) => <option key={ri} value={ri}>{r}</option>)}
+                </select>
+                {show && !teacher && <span style={{ fontSize: 12, color: "var(--pine)" }}>{ok ? "✓" : "→ " + (b.right || [])[teacherPick]}</span>}
+              </div>
+            );
+          })}
+        </div>
+      );
+    }
+
+    case "classify": {
+      const chosen = val || {};
+      return (
+        <div>
+          <div className="blk-q">{b.instruction || "Classe chaque élément"}</div>
+          {(b.items || []).map((it, ii) => {
+            const pick = teacher ? it.category : (chosen[ii] ?? "");
+            const ok = show && chosen[ii] === it.category;
+            return (
+              <div className="classify-item" key={ii}>
+                <span>{it.text}</span>
+                <select value={pick} disabled={submitted || teacher} onChange={e => setVal({ ...chosen, [ii]: e.target.value })}
+                  style={show && !teacher ? { borderColor: ok ? "#2E7D5B" : "var(--danger)" } : {}}>
+                  <option value="">—</option>
+                  {(b.categories || []).map((c, ci) => <option key={ci} value={c}>{c}</option>)}
+                </select>
+                {show && !teacher && <span style={{ fontSize: 12, color: "var(--pine)" }}>{ok ? "✓" : "→ " + it.category}</span>}
+              </div>
+            );
+          })}
+        </div>
+      );
+    }
+
+    case "open": {
+      const c = res; // correction IA éventuelle {verdict, explanation}
+      return (
+        <div>
+          <div className="blk-q">{b.question}</div>
+          <textarea className="field" style={{ width: "100%", minHeight: 70, padding: 8, border: "1px solid var(--border)", borderRadius: 7 }}
+            value={val || ""} disabled={submitted && !teacher && !!c} placeholder="Votre réponse…"
+            onChange={e => setVal(e.target.value)} />
+          {c && <div className={"corr " + (c.verdict === "correct" ? "ok" : c.verdict === "partiel" ? "partial" : "ko")}>
+            <b>{c.verdict === "correct" ? "✅ Correct" : c.verdict === "partiel" ? "🟠 Partiellement correct" : "❌ À revoir"}</b> — {c.explanation}
+          </div>}
+          {teacher && <div className="corr"><b>Attendu :</b> {b.guidance}{b.sample ? <><br /><b>Exemple :</b> {b.sample}</> : null}</div>}
+        </div>
+      );
+    }
+
+    case "scenario":
+      return <ScenarioBlock b={b} val={val} setVal={setVal} submitted={submitted} teacher={teacher} />;
+
+    default:
+      return <div className="note">Type d'exercice « {b.kind} » non reconnu par l'interface.</div>;
+  }
+}
+
+function ScenarioBlock({ b, val, setVal, submitted, teacher }) {
+  const picks = val || {};
+  return (
+    <div>
+      {b.intro && <p style={{ marginBottom: 8 }}>{b.intro}</p>}
+      {(b.steps || []).map((st, si) => {
+        const chosen = picks[si];
+        return (
+          <div className="scen-step" key={si}>
+            <div style={{ fontWeight: 600, marginBottom: 6 }}>{si + 1}. {st.situation}</div>
+            {(st.choices || []).map((ch, ci) => {
+              let cls = "scen-choice";
+              const reveal = teacher || chosen != null;
+              if (teacher && ch.correct) cls += " ok";
+              if (chosen === ci) cls += ch.correct ? " ok" : " ko";
+              return (
+                <button key={ci} className={cls} disabled={(submitted || chosen != null) && !teacher}
+                  onClick={() => setVal({ ...picks, [si]: ci })}>
+                  {ch.text}
+                  {reveal && (chosen === ci || teacher) && ch.feedback && <div className="scen-fb">{ch.feedback}</div>}
+                </button>
+              );
+            })}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+const fillOk = (answer, learner) => {
+  const alts = String(answer || "").split("|").map(norm).filter(Boolean);
+  const v = norm(learner);
+  return alts.some(a => a === v || (a.length > 3 && v.includes(a)));
+};
+
+// Correction locale d'un bloc -> {auto, total, ok} ; open -> auto:false
+function gradeBlock(b, val) {
+  switch (b.kind) {
+    case "fill": {
+      const blanks = b.blanks || []; let ok = 0;
+      blanks.forEach(bl => { if (fillOk(bl.answer, (val || {})[bl.id])) ok++; });
+      return { auto: true, total: blanks.length, ok };
+    }
+    case "mcq": return { auto: true, total: 1, ok: val === b.answer ? 1 : 0 };
+    case "multi": return { auto: true, total: 1, ok: arrEq([...(val || [])].sort(), [...(b.answers || [])].sort()) ? 1 : 0 };
+    case "truefalse": return { auto: true, total: 1, ok: val === b.answer ? 1 : 0 };
+    case "order": return { auto: true, total: 1, ok: arrEq(val || (b.items || []).map((_, i) => i), b.correctOrder || []) ? 1 : 0 };
+    case "match": {
+      const pairs = b.pairs || []; let ok = 0;
+      pairs.forEach(([li, ri]) => { if ((val || {})[li] === ri) ok++; });
+      return { auto: true, total: pairs.length, ok };
+    }
+    case "classify": {
+      const items = b.items || []; let ok = 0;
+      items.forEach((it, ii) => { if ((val || {})[ii] === it.category) ok++; });
+      return { auto: true, total: items.length, ok };
+    }
+    case "scenario": {
+      const steps = b.steps || []; let ok = 0;
+      steps.forEach((st, si) => { const c = (val || {})[si]; if (c != null && (st.choices || [])[c]?.correct) ok++; });
+      return { auto: true, total: steps.length, ok };
+    }
+    default: return { auto: false, total: 0, ok: 0 };
+  }
+}
+
+/* ---- Lecteur + éditeur d'un exercice ---- */
+function ExercicePlayer({ exo, setExo, onSaveProject, ctx }) {
+  const [answers, setAnswers] = useState({});
+  const [submitted, setSubmitted] = useState(false);
+  const [teacher, setTeacher] = useState(false);
+  const [openCorr, setOpenCorr] = useState({}); // index bloc -> {verdict, explanation}
+  const [correcting, setCorrecting] = useState(false);
+  const [edit, setEdit] = useState(false);
+  const [improve, setImprove] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const [saved, setSaved] = useState(false);
+  const blocks = exo.blocks || [];
+
+  const score = blocks.reduce((acc, b, i) => {
+    const g = gradeBlock(b, answers[i]); if (g.auto) { acc.total += g.total; acc.ok += g.ok; } return acc;
+  }, { ok: 0, total: 0 });
+  const openBlocks = blocks.map((b, i) => ({ b, i })).filter(x => x.b.kind === "open");
+
+  async function correctOpen() {
+    if (!openBlocks.length) return;
+    setCorrecting(true); setErr("");
+    try {
+      const payload = openBlocks.map(x => ({ question: x.b.question, guidance: x.b.guidance, answer: answers[x.i] || "" }));
+      const j = await askClaude({
+        role: "correcteur", ctx, expectJson: true,
+        messages: [{ role: "user", content:
+`Corrige ces réponses ouvertes en évaluant le SENS (pas les mots exacts).
+${JSON.stringify(payload)}
+Réponds en JSON : {"corrections":[{"verdict":"correct|partiel|revoir","explanation":"explication pédagogique courte"}]} dans le même ordre.` }],
+      });
+      const out = {};
+      (j.corrections || []).forEach((c, k) => { const idx = openBlocks[k]?.i; if (idx != null) out[idx] = c; });
+      setOpenCorr(out);
+    } catch (e) { setErr(e.message); }
+    setCorrecting(false);
+  }
+
+  async function runImprove() {
+    if (!improve.trim()) return;
+    setBusy(true); setErr("");
+    try {
+      const j = await askClaude({
+        role: "exercice", ctx, expectJson: true,
+        messages: [{ role: "user", content:
+`Voici un exercice existant (JSON) :
+${JSON.stringify(exo)}
+Demande de modification : « ${improve} »
+Renvoie l'exercice MODIFIÉ, dans le MÊME schéma JSON, complet. ${EXO_RULES}` }],
+      });
+      setExo(j); setAnswers({}); setSubmitted(false); setOpenCorr({}); setImprove(""); setSaved(false);
+    } catch (e) { setErr(e.message); }
+    setBusy(false);
+  }
+
+  const setMeta = (k, v) => { setExo({ ...exo, [k]: v }); setSaved(false); };
+  const delBlock = (i) => { setExo({ ...exo, blocks: blocks.filter((_, x) => x !== i) }); setSaved(false); };
+  const moveBlock = (i, d) => { const a = [...blocks]; const t = i + d; if (t < 0 || t >= a.length) return; [a[i], a[t]] = [a[t], a[i]]; setExo({ ...exo, blocks: a }); setSaved(false); };
+
+  // export
+  const html = () => `<h3>${esc(exo.titre)}</h3><p><em>${esc(exo.consigne || "")}</em></p>` +
+    blocks.map(b => {
+      if (b.kind === "text") return mdToHtml(b.content || "");
+      if (b.kind === "fill") return `<p>${esc(b.text || "").replace(/\[\[(\d+)\]\]/g, (m, id) => "____(" + ((b.blanks || []).find(x => +x.id === +id)?.answer || "") + ")")}</p>`;
+      if (b.kind === "mcq") return `<p><b>${esc(b.question)}</b></p><ul>${(b.options || []).map((o, i) => `<li>${i === b.answer ? "✔ " : ""}${esc(o)}</li>`).join("")}</ul>`;
+      if (b.kind === "multi") return `<p><b>${esc(b.question)}</b></p><ul>${(b.options || []).map((o, i) => `<li>${(b.answers || []).includes(i) ? "✔ " : ""}${esc(o)}</li>`).join("")}</ul>`;
+      if (b.kind === "truefalse") return `<p><b>${esc(b.statement)}</b> → ${b.answer ? "Vrai" : "Faux"}</p>`;
+      if (b.kind === "order") return `<p><b>${esc(b.instruction || "")}</b><br>${(b.correctOrder || []).map((oi, k) => `${k + 1}. ${esc((b.items || [])[oi])}`).join("<br>")}</p>`;
+      if (b.kind === "match") return `<p><b>${esc(b.instruction || "")}</b></p><ul>${(b.pairs || []).map(([li, ri]) => `<li>${esc((b.left || [])[li])} → ${esc((b.right || [])[ri])}</li>`).join("")}</ul>`;
+      if (b.kind === "classify") return `<p><b>${esc(b.instruction || "")}</b></p><ul>${(b.items || []).map(it => `<li>${esc(it.text)} → ${esc(it.category)}</li>`).join("")}</ul>`;
+      if (b.kind === "open") return `<p><b>${esc(b.question)}</b><br><em>Attendu : ${esc(b.guidance || "")}</em></p>`;
+      if (b.kind === "scenario") return `<p><b>${esc(b.intro || "Scénario")}</b></p>` + (b.steps || []).map((st, si) => `<p>${si + 1}. ${esc(st.situation)}<br>${(st.choices || []).map(c => `${c.correct ? "✔ " : "• "}${esc(c.text)}`).join("<br>")}</p>`).join("");
+      return "";
+    }).join("");
+  const txt = () => html().replace(/<[^>]+>/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+
+  return (
+    <div className="exo-wrap">
+      <div className="exo-head">
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {edit ? <input className="field" style={{ width: "100%", padding: 6, border: "1px solid var(--border)", borderRadius: 7, fontSize: 18 }} value={exo.titre || ""} onChange={e => setMeta("titre", e.target.value)} />
+            : <div className="exo-title">{exo.titre}</div>}
+        </div>
+        <div className="role-toggle" role="tablist">
+          <button className={!teacher ? "on" : ""} onClick={() => setTeacher(false)}>👨‍🎓 Apprenant</button>
+          <button className={teacher ? "on" : ""} onClick={() => setTeacher(true)}>👨‍🏫 Formateur</button>
+        </div>
+      </div>
+
+      <div className="exo-meta">
+        <span className="tag-eval">{exo.type}</span>
+        <span className="tag-eval">{exo.difficulte}</span>
+        <span className="tag-eval">{exo.duree}</span>
+        {exo.competences && <span className="tag-eval">{exo.competences}</span>}
+      </div>
+
+      {edit
+        ? <textarea className="field" style={{ width: "100%", minHeight: 50, padding: 8, border: "1px solid var(--border)", borderRadius: 7, marginBottom: 14 }} value={exo.consigne || ""} onChange={e => setMeta("consigne", e.target.value)} />
+        : exo.consigne && <div className="exo-consigne">{exo.consigne}</div>}
+
+      {edit && (
+        <div className="grid3" style={{ marginBottom: 12 }}>
+          <Field label="Type"><input value={exo.type || ""} onChange={e => setMeta("type", e.target.value)} /></Field>
+          <Field label="Difficulté"><select value={exo.difficulte || ""} onChange={e => setMeta("difficulte", e.target.value)}><option>Débutant</option><option>Intermédiaire</option><option>Avancé</option></select></Field>
+          <Field label="Durée"><input value={exo.duree || ""} onChange={e => setMeta("duree", e.target.value)} /></Field>
+        </div>
+      )}
+
+      {blocks.map((b, i) => (
+        <div className="blk" key={i}>
+          {edit && (
+            <div className="rowops" style={{ marginBottom: 6, justifyContent: "flex-end" }}>
+              <button title="Monter" onClick={() => moveBlock(i, -1)}>↑</button>
+              <button title="Descendre" onClick={() => moveBlock(i, 1)}>↓</button>
+              <button title="Supprimer le bloc" onClick={() => delBlock(i)}>✕</button>
+            </div>
+          )}
+          <BlockView block={b} teacher={teacher} submitted={submitted}
+            val={answers[i]} setVal={(v) => setAnswers({ ...answers, [i]: v })} res={openCorr[i]} />
+        </div>
+      ))}
+
+      {exo.pourquoi && (teacher || submitted) && (
+        <div className="note" style={{ marginTop: 16 }}>
+          <b>💡 Pourquoi cet exercice ?</b> {exo.pourquoi}
+        </div>
+      )}
+
+      {err && <div className="err">{err}</div>}
+
+      {/* Barre d'action apprenant */}
+      {!teacher && !edit && (
+        <div className="bar">
+          {!submitted
+            ? <button className="btn" onClick={() => setSubmitted(true)}>Valider mes réponses</button>
+            : <>
+                <span className="score-badge">{score.ok} / {score.total}</span>
+                <span style={{ fontSize: 13, color: "var(--muted)" }}>réponses auto-corrigées justes</span>
+                {openBlocks.length > 0 && <button className="btn sm" onClick={correctOpen} disabled={correcting}>{correcting ? <><span className="spin" /> Correction IA…</> : "Corriger les réponses ouvertes avec l'IA"}</button>}
+                <button className="btn sm ghost" onClick={() => { setSubmitted(false); setAnswers({}); setOpenCorr({}); }}>Recommencer</button>
+              </>}
+        </div>
+      )}
+
+      {/* Outils formateur */}
+      {teacher && (
+        <>
+          <div className="bar" style={{ marginTop: 16 }}>
+            <button className="btn sm ghost" onClick={() => setEdit(!edit)}>{edit ? "Terminer l'édition" : "✏️ Éditer"}</button>
+            {onSaveProject && <button className="btn sm" onClick={async () => { await onSaveProject({ id: exo._id, module: "exercice", type: "Exercice", titre: exo.titre, form: ctx, result: exo }); setSaved(true); }}>{saved ? "✓ Enregistré" : "Enregistrer dans la banque"}</button>}
+          </div>
+          <div className="panel" style={{ marginTop: 12, background: "var(--sage)" }}>
+            <Field label="✨ Améliorer avec l'IA">
+              <input value={improve} onChange={e => setImprove(e.target.value)} placeholder="Ex. rends l'exercice plus difficile, ajoute 5 questions, transforme-le en jeu…"
+                onKeyDown={e => { if (e.key === "Enter") runImprove(); }} />
+            </Field>
+            <div className="bar" style={{ marginBottom: 0 }}>
+              {["Rends plus difficile", "Ajoute des pièges", "Simplifie pour débutants", "Ajoute 5 questions", "Transforme en jeu"].map(p =>
+                <button key={p} className="btn sm ghost" onClick={() => setImprove(p)}>{p}</button>)}
+              <button className="btn sm" onClick={runImprove} disabled={busy || !improve.trim()}>{busy ? <><span className="spin" /> …</> : "Appliquer"}</button>
+            </div>
+          </div>
+          <ExportBar title={exo.titre || "Exercice"} getHtml={html} getText={txt} />
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ---- Écran de création d'exercice ---- */
+const EXO_TYPES = ["CV à trous", "Texte à trous", "QCM", "Vrai / Faux", "Associer", "Remettre dans l'ordre", "Classement", "Scénario à choix", "Question ouverte", "Formulaire à compléter", "Corriger les erreurs"];
+
+function ExerciceGen({ ctx, setCtx, go, onSaveProject }) {
+  const [type, setType] = useState("");
+  const [support, setSupport] = useState("");
+  const [multi, setMulti] = useState(false);
+  const [variants, setVariants] = useState(null);
+  const [exo, setExo] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const fileRef = useRef(null);
+  const u = (k) => (e) => setCtx({ ...ctx, [k]: e.target.value });
+
+  async function loadFile(e) {
+    const f = e.target.files?.[0]; if (!f) return;
+    if (/\.(txt|md|csv|html?)$/i.test(f.name)) setSupport(await f.text());
+    else setErr("Importez un fichier texte (.txt, .md) ou collez le contenu. L'import PDF/PowerPoint/Word n'est pas encore disponible ici — copiez-collez le texte du support pour l'instant.");
+  }
+
+  const basePrompt = () =>
+`Objectif ciblé : ${ctx.objectif || "(non précisé — déduis-le du thème)"}
+Thème : ${ctx.theme || "—"} | Public : ${ctx.publicCible || "—"} | Niveau : ${ctx.niveau || "—"} | Durée souhaitée : ${ctx.dureeExo || "15 min"} | Participants : ${ctx.participants || "—"}
+Type d'exercice demandé : ${type.trim() ? "« " + type.trim() + " » (respecte ce format, même s'il est inhabituel — invente-le si besoin)" : "À TOI DE CHOISIR le format le plus pertinent pour l'objectif."}
+${support.trim() ? `Base l'exercice sur les notions réellement présentes dans ce support :\n"""${support.slice(0, 6000)}"""` : ""}`;
+
+  async function generateOne() {
+    setBusy(true); setErr(""); setExo(null); setVariants(null);
+    try {
+      const j = await askClaude({
+        role: "exercice", ctx, expectJson: true,
+        messages: [{ role: "user", content: `Conçois UN exercice pédagogique interactif.\n${basePrompt()}\nRaisonne (objectif→compétence→comportement→format→niveau→durée→correction) puis réponds avec CE schéma JSON :\n${EXO_SCHEMA}\n${EXO_RULES}` }],
+      });
+      setExo({ ...j, _id: null });
+      setCtx({ ...ctx, dernierTravail: "Exercice « " + j.titre + " » (" + j.type + ")" });
+    } catch (e) { setErr(e.message); }
+    setBusy(false);
+  }
+  async function generateVariants() {
+    setBusy(true); setErr(""); setExo(null); setVariants(null);
+    try {
+      const j = await askClaude({
+        role: "exercice", ctx, expectJson: true,
+        messages: [{ role: "user", content: `Propose 3 FORMATS d'exercice différents et pertinents pour cet objectif (ne génère pas encore le contenu).\n${basePrompt()}\nRéponds en JSON : {"variants":[{"type":"...","objectif":"...","duree":"...","difficulte":"...","interet":"intérêt pédagogique en 1 phrase"}]}` }],
+      });
+      setVariants(j.variants || []);
+    } catch (e) { setErr(e.message); }
+    setBusy(false);
+  }
+  async function pickVariant(v) {
+    setType(v.type); setBusy(true); setErr("");
+    try {
+      const j = await askClaude({
+        role: "exercice", ctx, expectJson: true,
+        messages: [{ role: "user", content: `Conçois UN exercice interactif de type « ${v.type} ».\n${basePrompt()}\nRéponds avec CE schéma JSON :\n${EXO_SCHEMA}\n${EXO_RULES}` }],
+      });
+      setExo({ ...j, _id: null }); setVariants(null);
+    } catch (e) { setErr(e.message); }
+    setBusy(false);
+  }
+
+  return (
+    <div>
+      <div className="eyebrow">Concevoir</div>
+      <h2 className="page">Créer un exercice</h2>
+      <p className="lede">Générez un exercice réellement interactif, adapté à votre objectif. Laissez l'assistant choisir le meilleur format, ou imposez le vôtre — l'apprenant le réalise directement dans l'interface, avec correction.</p>
+
+      <div className="panel">
+        <div className="grid2">
+          <Field label="Objectif pédagogique à travailler"><textarea value={ctx.objectif || ""} onChange={u("objectif")} placeholder="Ex. Être capable de construire un CV professionnel." /></Field>
+          <Field label="Contexte / thème"><textarea value={ctx.theme || ""} onChange={u("theme")} placeholder="Ex. Atelier recherche d'emploi" /></Field>
+        </div>
+        <div className="grid3" style={{ marginTop: 12 }}>
+          <Field label="Public"><input value={ctx.publicCible || ""} onChange={u("publicCible")} placeholder="Ex. demandeurs d'emploi" /></Field>
+          <Field label="Niveau"><select value={ctx.niveau || ""} onChange={u("niveau")}><option value="">—</option><option>Débutant</option><option>Intermédiaire</option><option>Avancé</option></select></Field>
+          <Field label="Durée souhaitée"><input value={ctx.dureeExo || ""} onChange={u("dureeExo")} placeholder="Ex. 15 min" /></Field>
+        </div>
+        <div style={{ marginTop: 12 }}>
+          <Field label="Type d'exercice (laisser vide = l'IA choisit ; ou texte libre)">
+            <input value={type} onChange={e => setType(e.target.value)} placeholder="Ex. CV à trous, repérer les erreurs dans une lettre de motivation, simulation d'entretien…" />
+          </Field>
+          <div className="bar" style={{ marginTop: 8 }}>
+            {EXO_TYPES.map(t => <button key={t} className="btn sm ghost" onClick={() => setType(t)}>{t}</button>)}
+          </div>
+        </div>
+        <div style={{ marginTop: 12 }}>
+          <Field label="Support de cours (facultatif — l'exercice sera basé dessus)">
+            <textarea value={support} onChange={e => setSupport(e.target.value)} placeholder="Collez ici le contenu de votre cours pour générer un exercice fidèle aux notions enseignées…" />
+          </Field>
+          <div className="bar" style={{ marginTop: 6 }}>
+            <button className="btn sm ghost" onClick={() => fileRef.current?.click()}>Importer un fichier texte</button>
+            <input ref={fileRef} type="file" accept=".txt,.md,.csv,.html" style={{ display: "none" }} onChange={loadFile} />
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13.5, marginLeft: 4 }}>
+              <input type="checkbox" checked={multi} onChange={e => setMulti(e.target.checked)} /> Proposer d'abord plusieurs formats
+            </label>
+          </div>
+        </div>
+        <div className="bar">
+          <button className="btn" onClick={multi ? generateVariants : generateOne} disabled={busy}>
+            {busy ? <><span className="spin" /> Conception…</> : (multi ? "Proposer des formats" : "✨ Générer l'exercice")}
+          </button>
+        </div>
+        {err && <div className="err">{err}</div>}
+      </div>
+
+      {variants && (
+        <div className="panel">
+          <h3 style={{ fontFamily: "var(--serif)", fontSize: 18, marginBottom: 4 }}>Formats proposés</h3>
+          <p style={{ color: "var(--muted)", fontSize: 13.5, marginBottom: 10 }}>Choisissez celui à générer.</p>
+          {variants.map((v, i) => (
+            <div className="exo-variant" key={i}>
+              <h4>{v.type} <span className="tag-eval">{v.difficulte}</span> <span className="tag-eval">{v.duree}</span></h4>
+              <p style={{ fontSize: 13.5, color: "var(--muted)", margin: "2px 0 8px" }}>{v.interet}</p>
+              <button className="btn sm" onClick={() => pickVariant(v)} disabled={busy}>Générer ce format →</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {exo && (
+        <>
+          <ExercicePlayer exo={exo} setExo={setExo} onSaveProject={onSaveProject} ctx={ctx} />
+          <NextSteps go={go} hide={["exercices"]} />
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ---- Ouverture d'un exercice depuis la banque ---- */
+function ExerciceView({ project, go }) {
+  const [exo, setExo] = useState({ ...project.result, _id: project.id });
+  return (
+    <div>
+      <div className="eyebrow">Banque d'exercices</div>
+      <h2 className="page">{project.titre}</h2>
+      <p className="lede">Exercice enregistré. Basculez entre vue apprenant et vue formateur, éditez-le, ou améliorez-le avec l'IA.</p>
+      <ExercicePlayer exo={exo} setExo={setExo} onSaveProject={async (p) => (await store.save({ ...p, id: project.id }))} ctx={project.form || {}} />
+      <div className="bar"><button className="btn sm ghost" onClick={() => go("bibliotheque")}>← Retour à la bibliothèque</button></div>
+    </div>
+  );
+}
+
 /* ------------------ 7. COQUILLE APPLICATIVE ---------------- */
 export default function App() {
   const [view, setView] = useState("home");
@@ -1000,12 +1656,13 @@ export default function App() {
   function openProject(p) {
     if (p.form && typeof p.form === "object" && p.form.theme !== undefined) setCtx({ ...ctx, ...p.form });
     if (p.module === "deroule") { setOpened(p); setView("deroule"); }
+    else if (p.module === "exercice") { setOpened(p); setView("exercice-view"); }
     else { setOpened(p); setView("viewer"); }
     window.scrollTo(0, 0);
   }
   const NAV = [
     ["Démarrer", [["home", "Accueil"], ["chat", "Assistant"]]],
-    ["Concevoir", [["sequence", "Séquences"], ["objectifs", "Objectifs"], ["activites", "Activités"]]],
+    ["Concevoir", [["sequence", "Séquences"], ["objectifs", "Objectifs"], ["activites", "Activités"], ["exercices", "Exercices"]]],
     ["Évaluer", [["evaluations", "Évaluations"], ["analyse", "Analyse"], ["adaptation", "Adaptation"]]],
     ["Organiser", [["deroule", "Déroulé"], ["bibliotheque", "Bibliothèque"]]],
   ];
@@ -1014,6 +1671,7 @@ export default function App() {
   return (
     <>
       <style>{CSS}</style>
+      <style>{EXO_CSS}</style>
       <div className="app">
         <nav className="rail" aria-label="Navigation principale">
           <div className="rail-brand"><h1>Assistant Pédagogique</h1><p>Ingénierie de formation</p></div>
@@ -1043,6 +1701,8 @@ export default function App() {
             {view === "analyse" && <Analyse ctx={ctx} setCtx={setCtx} go={go} onSaveProject={onSaveProject} />}
             {view === "adaptation" && <Adaptation ctx={ctx} setCtx={setCtx} go={go} onSaveProject={onSaveProject} />}
             {view === "deroule" && <Deroule ctx={ctx} setCtx={setCtx} go={go} onSaveProject={onSaveProject} initial={opened?.module === "deroule" ? opened : null} />}
+            {view === "exercices" && <ExerciceGen ctx={ctx} setCtx={setCtx} go={go} onSaveProject={onSaveProject} />}
+            {view === "exercice-view" && opened && <ExerciceView project={opened} go={go} />}
             {view === "bibliotheque" && <Bibliotheque openProject={openProject} />}
             {view === "viewer" && opened && <ProjectViewer project={opened} go={go} />}
           </div>
