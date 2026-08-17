@@ -1,0 +1,3 @@
+# Normalise les fins de ligne : LF dans le dépôt pour tous les fichiers texte.
+# Évite l'avertissement LF/CRLF de Git sous Windows et les faux diffs.
+* text=auto eol=lf
