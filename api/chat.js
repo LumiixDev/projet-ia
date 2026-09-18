@@ -16,8 +16,8 @@
 //  👉 Pour connaître les modèles VIVANTS sur TON compte, ouvre dans ton
 //     navigateur :  https://<ton-app>.vercel.app/api/models
 //     puis copie un identifiant ci-dessous.
-const MODEL = "openai/gpt-oss-120b";                       // texte / raisonnement (stable, non daté)
-const VISION_MODEL = "meta/llama-3.2-11b-vision-instruct"; // lecture d'images
+const MODEL = "nvidia/nemotron-3-ultra-550b-a55b";                       // texte / raisonnement (stable, non daté)
+const VISION_MODEL = "moonshotai/kimi-k3"; // lecture d'images
 // ─────────────────────────────────────────────────────────────
 
 const NVIDIA_URL = "https://integrate.api.nvidia.com/v1/chat/completions";
