@@ -111,7 +111,7 @@ Dans **Créer un exercice**, un encadré en haut permet d'importer jusqu'à
 l'appareil photo s'ouvre directement).
 
 Fonctionnement en deux temps :
-1. Un modèle **vision** (`meta/llama-3.2-11b-vision-instruct` sur NVIDIA Build) lit
+1. Un modèle **vision** (Mistral Large 3 (le même modèle, qui gère aussi la vision) sur NVIDIA Build) lit
    les photos et retranscrit le cours en texte dans le champ « Support de cours ».
    Tu peux relire/corriger ce texte.
 2. GLM-5.2 génère l'exercice **à partir de ce cours**. Si la case « Générer
@@ -126,10 +126,18 @@ Bon à savoir :
 - Pour une lecture de documents encore meilleure, tu peux remplacer `VISION_MODEL`
   en haut de `api/chat.js` par un modèle Qwen VL (filtre « vision » sur build.nvidia.com).
 
+## Si l'IA renvoie une erreur 404 / 410 (« model … end of life »)
+
+NVIDIA retire régulièrement d'anciens modèles. Quand ça arrive, l'appli affiche
+désormais le vrai message. Pour repartir : va sur https://build.nvidia.com/models,
+choisis un modèle marqué « Free Endpoint », ouvre-le, clique « View Code », copie
+son identifiant exact, et colle-le dans la constante `MODEL` (et `VISION_MODEL`
+si besoin) en haut de `api/chat.js`. Redéploie. C'est une modification d'une ligne.
+
 ## Notes
 
-- **Modèle IA** : `z-ai/glm-5.2` (GLM-5.2 sur NVIDIA Build, gratuit) — un des
-  modèles ouverts les plus performants en 2026. Pour en changer (ex.
+- **Modèle IA** : `mistralai/mistral-large-3-675b-instruct-2512` (Mistral Large 3 sur NVIDIA
+  Build, gratuit) — excellent en français et capable de lire les images. Pour en changer (ex.
   `deepseek-ai/deepseek-v4-pro`), modifie **uniquement** la constante `MODEL`
   en haut de `api/chat.js`. Copie l'identifiant exact depuis la page du modèle
   sur build.nvidia.com si tu as une erreur « model not found ».
