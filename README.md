@@ -104,6 +104,28 @@ Nouvelle fonctionnalité centrale : génération d'exercices **réellement inter
 > L'exercice peut être généré à partir d'un support de cours collé (ou fichier .txt/.md).
 > L'import direct PDF / PowerPoint / Word n'est pas encore branché — colle le texte pour l'instant.
 
+## 📷 Créer un exercice depuis des photos de cours
+
+Dans **Créer un exercice**, un encadré en haut permet d'importer jusqu'à
+**5 photos** de feuilles de leçon (bouton « Importer des photos » — sur mobile,
+l'appareil photo s'ouvre directement).
+
+Fonctionnement en deux temps :
+1. Un modèle **vision** (`meta/llama-3.2-11b-vision-instruct` sur NVIDIA Build) lit
+   les photos et retranscrit le cours en texte dans le champ « Support de cours ».
+   Tu peux relire/corriger ce texte.
+2. GLM-5.2 génère l'exercice **à partir de ce cours**. Si la case « Générer
+   directement après lecture » est cochée, l'exercice sort immédiatement (effet « bam »).
+
+Bon à savoir :
+- Les photos sont **réduites automatiquement** avant envoi (rien à faire).
+- Formats acceptés : JPG, PNG. Maximum 5 pages par lecture — pour un cours plus
+  long, importe par lots de 5.
+- Plus la photo est nette et bien cadrée, meilleure est la lecture. L'écriture
+  manuscrite fonctionne mais reste moins fiable qu'un texte imprimé.
+- Pour une lecture de documents encore meilleure, tu peux remplacer `VISION_MODEL`
+  en haut de `api/chat.js` par un modèle Qwen VL (filtre « vision » sur build.nvidia.com).
+
 ## Notes
 
 - **Modèle IA** : `z-ai/glm-5.2` (GLM-5.2 sur NVIDIA Build, gratuit) — un des

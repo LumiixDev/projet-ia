@@ -1,14 +1,18 @@
 // Fonction serveur exécutée par Vercel (dossier /api).
 // Elle reçoit la demande du navigateur, ajoute la clé NVIDIA (secrète) et
-// interroge le modèle GLM-5.2 hébergé sur NVIDIA Build. La clé n'est JAMAIS
-// exposée au navigateur.
+// interroge NVIDIA Build. La clé n'est JAMAIS exposée au navigateur.
+//
+// Deux usages :
+//  - texte seul  -> modèle MODEL (GLM-5.2) : conseil, séquences, exercices...
+//  - avec images -> modèle VISION_MODEL : lecture de photos de cours.
 
 // ─────────────────────────────────────────────────────────────
-//  POUR CHANGER DE MODÈLE : modifie UNIQUEMENT cette ligne.
-//  Copie l'identifiant exact depuis la page du modèle sur
-//  build.nvidia.com (bouton « Get API Key » / « View Code »).
-//  Ex. "deepseek-ai/deepseek-v4-pro", "nvidia/nemotron-3-ultra"...
-const MODEL = "z-ai/glm-5.2";
+//  POUR CHANGER DE MODÈLE : modifie UNIQUEMENT ces deux lignes.
+//  Copie l'identifiant exact depuis la page du modèle sur build.nvidia.com.
+const MODEL = "z-ai/glm-5.2";                              // texte / raisonnement
+const VISION_MODEL = "meta/llama-3.2-11b-vision-instruct"; // lecture d'images
+//  (Pour une meilleure lecture de documents / écriture manuscrite, tu peux
+//   essayer un modèle Qwen VL depuis build.nvidia.com — filtre « vision ».)
 // ─────────────────────────────────────────────────────────────
 
 const NVIDIA_URL = "https://integrate.api.nvidia.com/v1/chat/completions";
@@ -26,38 +30,47 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { system, messages } = req.body || {};
+    const { system, messages, images } = req.body || {};
+    const useVision = Array.isArray(images) && images.length > 0;
+
+    let msgs = Array.isArray(messages) ? messages.slice() : [];
+
+    // En mode vision : on rattache les images (max 5) au dernier message utilisateur.
+    if (useVision) {
+      const imgs = images.slice(0, 5).map((url) => ({ type: "image_url", image_url: { url } }));
+      let done = false;
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        if (msgs[i].role === "user") {
+          msgs[i] = { role: "user", content: [{ type: "text", text: String(msgs[i].content || "") }, ...imgs] };
+          done = true; break;
+        }
+      }
+      if (!done) msgs.push({ role: "user", content: [{ type: "text", text: "Décris ces images." }, ...imgs] });
+    }
 
     const payload = {
-      model: MODEL,
-      messages: [{ role: "system", content: system || "" }, ...(messages || [])],
-      temperature: 0.5,
+      model: useVision ? VISION_MODEL : MODEL,
+      messages: [{ role: "system", content: system || "" }, ...msgs],
+      temperature: useVision ? 0.2 : 0.5,
       max_tokens: 4096,
     };
 
     const r = await fetch(NVIDIA_URL, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${key}`,
-      },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
       body: JSON.stringify(payload),
     });
 
     if (!r.ok) {
       const detail = await r.text();
-      // 429 = trop de requêtes (limite ~40/min sur le tier gratuit NVIDIA)
       if (r.status === 429) {
-        return res.status(429).json({
-          error: "Trop de requêtes d'un coup (limite du tier gratuit NVIDIA, ~40/min). Patientez quelques secondes puis réessayez.",
-        });
+        return res.status(429).json({ error: "Trop de requêtes d'un coup (limite du tier gratuit NVIDIA, ~40/min). Patientez quelques secondes puis réessayez." });
       }
       return res.status(r.status).json({ error: "Erreur du fournisseur IA.", detail: detail.slice(0, 400) });
     }
 
     const data = await r.json();
     let content = data.choices?.[0]?.message?.content || "";
-    // Certains modèles de raisonnement ajoutent un bloc <think>…</think> : on le retire.
     content = content.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
     return res.status(200).json({ content });
   } catch (e) {

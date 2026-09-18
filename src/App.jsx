@@ -231,13 +231,20 @@ const store = {
 
 /* -------------------- 4. MOTEUR IA ------------------------- */
 // Socle commun : la spécialisation "conseiller pédagogique" de tous les rôles.
-const SOCLE = `Tu es un expert français en ingénierie pédagogique et andragogie (taxonomie de Bloom révisée, alignement pédagogique, pédagogie active, apprentissage expérientiel, classe inversée, pédagogie différenciée, évaluation diagnostique/formative/sommative, charge cognitive).
+// ─────────────────────────────────────────────────────────────
+//  IDENTITÉ DE L'ASSISTANT — mets ici le nom de ton assistant / ton site.
+//  C'est ce nom qu'il donnera si on lui demande « qui es-tu ? ».
+const NOM_ASSISTANT = "Assistant Pédagogique";
+const NOM_STRUCTURE = "la MPT Abbeville"; // ex. "la Maison Pour Tous d'Abbeville", ou le nom de ton site
+// ─────────────────────────────────────────────────────────────
+
+const SOCLE = `Tu es « ${NOM_ASSISTANT} », l'assistant pédagogique de ${NOM_STRUCTURE}. Si on te demande qui tu es, quel est ton nom, quel modèle tu es, ou qui t'a créé, tu réponds uniquement que tu es « ${NOM_ASSISTANT} », l'assistant pédagogique de ${NOM_STRUCTURE}. Tu ne mentionnes JAMAIS un modèle de langage sous-jacent ni un fournisseur (Google, Gemini, OpenAI, Meta, GLM, etc.).
+Tu es un expert français en ingénierie pédagogique et andragogie (taxonomie de Bloom révisée, alignement pédagogique, pédagogie active, apprentissage expérientiel, classe inversée, pédagogie différenciée, évaluation diagnostique/formative/sommative, charge cognitive).
 Tu t'adresses à des formateurs et ingénieurs pédagogiques professionnels. Tu réponds toujours en français.
 Ton rôle est celui d'un CONSEILLER, pas d'un simple générateur : tu challenges les choix discutables, tu signales les incohérences (verbe non observable, durée irréaliste, activité inadaptée au nombre de participants, absence d'évaluation...), tu expliques brièvement tes choix pédagogiques, et tu poses une question ciblée quand une information indispensable manque.
 Tu tiens toujours compte : du public et de son niveau, de la durée disponible, du nombre de participants, de la modalité (présentiel / distanciel / hybride) et des contraintes matérielles.
 Sois concret, structuré et directement exploitable. Pas de longs blocs de texte indigestes.`;
-const NOM_ASSISTANT = "Assistant Pédagogique";
-const NOM_STRUCTURE = "Assistant Pédagogique"; // ex. "la Maison Pour Tous d'Abbeville", ou le nom de ton site
+
 const ROLES = {
   assistant: SOCLE + `\nDans cette conversation, réponds de façon structurée (titres courts, listes) mais concise. Si l'utilisateur fait référence à un travail précédent de la session, poursuis-le au lieu de repartir de zéro.`,
   sequence: SOCLE + `\nTu es le concepteur de séquences. Tu produis des séquences pédagogiques complètes, réalistes et alignées (objectif ↔ activités ↔ évaluation).`,
@@ -249,6 +256,7 @@ const ROLES = {
   deroule: SOCLE + `\nTu es le concepteur de déroulés pédagogiques : tu découpes une formation en temps réalistes (accueil, séquences, pauses, évaluations, clôture) avec horaires cohérents.`,
   exercice: SOCLE + `\nTu es le concepteur d'exercices interactifs. Ta règle absolue : PERTINENCE PÉDAGOGIQUE avant la variété et l'effet visuel. Avant de produire, tu raisonnes : objectif → compétence → comportement observable → format d'exercice qui travaille réellement cette compétence → niveau de l'apprenant → durée → mode de correction. Tu ne produis pas systématiquement un QCM ; tu choisis le format le plus adapté. Tu dimensionnes le nombre d'items selon la durée.`,
   correcteur: SOCLE + `\nTu es le correcteur. Pour une réponse ouverte, tu évalues le SENS de la réponse, pas une correspondance mot à mot. Tu es bienveillant mais exigeant, et tu justifies brièvement.`,
+  vision: `Tu lis des photos de pages de cours (imprimées ou manuscrites) et tu RETRANSCRIS FIDÈLEMENT leur contenu pédagogique en français, sous forme de texte structuré : titres, définitions, listes, formules, exemples. Tu n'inventes RIEN et tu n'ajoutes aucun commentaire. Si une partie est illisible, écris [illisible]. Restitue le contenu dans l'ordre des pages.`,
 };
 
 function ctxText(ctx) {
@@ -268,14 +276,14 @@ function ctxText(ctx) {
 
 // L'appel à l'IA passe par notre propre fonction serveur (/api/chat).
 // La clé Groq n'est JAMAIS dans le navigateur : elle reste côté serveur (voir api/chat.js).
-async function askClaude({ role, messages, ctx, expectJson = false }) {
+async function askClaude({ role, messages, ctx, expectJson = false, images = null }) {
   let system = (ROLES[role] || ROLES.assistant) + ctxText(ctx);
   if (expectJson) system += `\nIMPORTANT : réponds UNIQUEMENT avec un objet JSON valide, sans texte avant/après, sans balises markdown.`;
 
   const res = await fetch("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ system, messages, expectJson }),
+    body: JSON.stringify({ system, messages, expectJson, images }),
   });
 
   if (!res.ok) {
@@ -1065,6 +1073,25 @@ const EXO_CSS = `
 const norm = (s) => String(s ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
 const arrEq = (a, b) => Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((v, i) => v === b[i]);
 
+// Réduit une image (photo de cours) avant envoi : évite de dépasser les limites
+// de taille de requête et accélère la lecture. Retourne un data URL JPEG.
+function scaleImage(file, max = 1500, quality = 0.82) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, max / Math.max(img.width, img.height));
+      const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
+      const c = document.createElement("canvas"); c.width = w; c.height = h;
+      c.getContext("2d").drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      resolve(c.toDataURL("image/jpeg", quality));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Image illisible (formats acceptés : JPG, PNG).")); };
+    img.src = url;
+  });
+}
+
 // Schéma transmis à l'IA (documentation des "kind" possibles).
 const EXO_SCHEMA = `{
  "type":"nom court du format choisi",
@@ -1591,7 +1618,11 @@ function ExerciceGen({ ctx, setCtx, go, onSaveProject }) {
   const [exo, setExo] = useState(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [photos, setPhotos] = useState([]);      // aperçus des pages importées (data URL réduites)
+  const [reading, setReading] = useState(false);  // lecture des photos en cours
+  const [autoGen, setAutoGen] = useState(true);    // générer l'exercice directement après lecture
   const fileRef = useRef(null);
+  const photoRef = useRef(null);
   const u = (k) => (e) => setCtx({ ...ctx, [k]: e.target.value });
 
   async function loadFile(e) {
@@ -1600,18 +1631,42 @@ function ExerciceGen({ ctx, setCtx, go, onSaveProject }) {
     else setErr("Importez un fichier texte (.txt, .md) ou collez le contenu. L'import PDF/PowerPoint/Word n'est pas encore disponible ici — copiez-collez le texte du support pour l'instant.");
   }
 
-  const basePrompt = () =>
-`Objectif ciblé : ${ctx.objectif || "(non précisé — déduis-le du thème)"}
+  // Importer des photos de cours : on réduit chaque image puis on les fait lire par le modèle vision.
+  async function loadPhotos(e) {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    setErr("");
+    if (files.length > 5) setErr("Maximum 5 pages à la fois (limite du modèle). Seules les 5 premières seront lues — relancez pour les pages suivantes.");
+    setReading(true);
+    try {
+      const urls = [];
+      for (const f of files.slice(0, 5)) urls.push(await scaleImage(f));
+      setPhotos(urls);
+      const text = await askClaude({
+        role: "vision", images: urls,
+        messages: [{ role: "user", content: `Retranscris fidèlement et de façon structurée le contenu pédagogique de ces ${urls.length} page(s) de cours.` }],
+      });
+      const merged = (support.trim() ? support.trim() + "\n\n" : "") + text.trim();
+      setSupport(merged);
+      if (autoGen) await generateOne(merged);
+    } catch (e2) { setErr(e2.message || "Échec de la lecture des photos."); }
+    setReading(false);
+    if (photoRef.current) photoRef.current.value = "";
+  }
+
+  const basePrompt = (sup) =>
+`Objectif ciblé : ${ctx.objectif || "(non précisé — déduis-le du support ou du thème)"}
 Thème : ${ctx.theme || "—"} | Public : ${ctx.publicCible || "—"} | Niveau : ${ctx.niveau || "—"} | Durée souhaitée : ${ctx.dureeExo || "15 min"} | Participants : ${ctx.participants || "—"}
 Type d'exercice demandé : ${type.trim() ? "« " + type.trim() + " » (respecte ce format, même s'il est inhabituel — invente-le si besoin)" : "À TOI DE CHOISIR le format le plus pertinent pour l'objectif."}
-${support.trim() ? `Base l'exercice sur les notions réellement présentes dans ce support :\n"""${support.slice(0, 6000)}"""` : ""}`;
+${(sup || "").trim() ? `Base l'exercice UNIQUEMENT sur les notions réellement présentes dans ce cours :\n"""${(sup || "").slice(0, 7000)}"""` : ""}`;
 
-  async function generateOne() {
+  async function generateOne(supOverride) {
+    const sup = supOverride != null ? supOverride : support;
     setBusy(true); setErr(""); setExo(null); setVariants(null);
     try {
       const j = await askClaude({
         role: "exercice", ctx, expectJson: true,
-        messages: [{ role: "user", content: `Conçois UN exercice pédagogique interactif.\n${basePrompt()}\nRaisonne (objectif→compétence→comportement→format→niveau→durée→correction) puis réponds avec CE schéma JSON :\n${EXO_SCHEMA}\n${EXO_RULES}` }],
+        messages: [{ role: "user", content: `Conçois UN exercice pédagogique interactif.\n${basePrompt(sup)}\nRaisonne (objectif→compétence→comportement→format→niveau→durée→correction) puis réponds avec CE schéma JSON :\n${EXO_SCHEMA}\n${EXO_RULES}` }],
       });
       setExo({ ...j, _id: null });
       setCtx({ ...ctx, dernierTravail: "Exercice « " + j.titre + " » (" + j.type + ")" });
@@ -1623,7 +1678,7 @@ ${support.trim() ? `Base l'exercice sur les notions réellement présentes dans 
     try {
       const j = await askClaude({
         role: "exercice", ctx, expectJson: true,
-        messages: [{ role: "user", content: `Propose 3 FORMATS d'exercice différents et pertinents pour cet objectif (ne génère pas encore le contenu).\n${basePrompt()}\nRéponds en JSON : {"variants":[{"type":"...","objectif":"...","duree":"...","difficulte":"...","interet":"intérêt pédagogique en 1 phrase"}]}` }],
+        messages: [{ role: "user", content: `Propose 3 FORMATS d'exercice différents et pertinents pour cet objectif (ne génère pas encore le contenu).\n${basePrompt(support)}\nRéponds en JSON : {"variants":[{"type":"...","objectif":"...","duree":"...","difficulte":"...","interet":"intérêt pédagogique en 1 phrase"}]}` }],
       });
       setVariants(j.variants || []);
     } catch (e) { setErr(e.message); }
@@ -1647,6 +1702,27 @@ ${support.trim() ? `Base l'exercice sur les notions réellement présentes dans 
       <h2 className="page">Créer un exercice</h2>
       <p className="lede">Générez un exercice réellement interactif, adapté à votre objectif. Laissez l'assistant choisir le meilleur format, ou imposez le vôtre — l'apprenant le réalise directement dans l'interface, avec correction.</p>
 
+      <div className="panel" style={{ borderColor: "var(--pine)", background: "var(--sage)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <div style={{ flex: 1, minWidth: 220 }}>
+            <div style={{ fontWeight: 600, fontSize: 15 }}>📷 Créer un exercice depuis des photos de cours</div>
+            <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 2 }}>Prenez en photo vos feuilles de leçon (jusqu'à 5 pages) : l'assistant lit le cours et génère l'exercice.</div>
+          </div>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+            <input type="checkbox" checked={autoGen} onChange={e => setAutoGen(e.target.checked)} /> Générer directement après lecture
+          </label>
+          <button className="btn" onClick={() => photoRef.current?.click()} disabled={reading || busy}>
+            {reading ? <><span className="spin" /> Lecture du cours…</> : "Importer des photos"}
+          </button>
+          <input ref={photoRef} type="file" accept="image/*" multiple capture="environment" style={{ display: "none" }} onChange={loadPhotos} />
+        </div>
+        {photos.length > 0 && (
+          <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
+            {photos.map((p, i) => <img key={i} src={p} alt={"page " + (i + 1)} style={{ height: 54, borderRadius: 6, border: "1px solid var(--border)" }} />)}
+          </div>
+        )}
+      </div>
+
       <div className="panel">
         <div className="grid2">
           <Field label="Objectif pédagogique à travailler"><textarea value={ctx.objectif || ""} onChange={u("objectif")} placeholder="Ex. Être capable de construire un CV professionnel." /></Field>
@@ -1666,8 +1742,8 @@ ${support.trim() ? `Base l'exercice sur les notions réellement présentes dans 
           </div>
         </div>
         <div style={{ marginTop: 12 }}>
-          <Field label="Support de cours (facultatif — l'exercice sera basé dessus)">
-            <textarea value={support} onChange={e => setSupport(e.target.value)} placeholder="Collez ici le contenu de votre cours pour générer un exercice fidèle aux notions enseignées…" />
+          <Field label="Support de cours (rempli automatiquement par les photos, ou collez le texte)">
+            <textarea value={support} onChange={e => setSupport(e.target.value)} placeholder="Le texte lu depuis vos photos apparaît ici — vous pouvez le corriger avant de générer. Ou collez directement votre cours…" />
           </Field>
           <div className="bar" style={{ marginTop: 6 }}>
             <button className="btn sm ghost" onClick={() => fileRef.current?.click()}>Importer un fichier texte</button>
