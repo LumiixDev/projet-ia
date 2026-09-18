@@ -1714,7 +1714,7 @@ ${(sup || "").trim() ? `Base l'exercice UNIQUEMENT sur les notions réellement p
           <button className="btn" onClick={() => photoRef.current?.click()} disabled={reading || busy}>
             {reading ? <><span className="spin" /> Lecture du cours…</> : "Importer des photos"}
           </button>
-          <input ref={photoRef} type="file" accept="image/*" multiple capture="environment" style={{ display: "none" }} onChange={loadPhotos} />
+          <input ref={photoRef} type="file" accept="image/*" multiple style={{ display: "none" }} onChange={loadPhotos} />
         </div>
         {photos.length > 0 && (
           <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
