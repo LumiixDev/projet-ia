@@ -288,7 +288,7 @@ async function askClaude({ role, messages, ctx, expectJson = false, images = nul
 
   if (!res.ok) {
     let msg = "Le moteur IA est momentanément indisponible (" + res.status + "). Réessayez.";
-    try { const e = await res.json(); if (e && e.error) msg = e.error; } catch {}
+    try { const e = await res.json(); if (e && e.error) msg = e.error + (e.detail ? " — détail : " + e.detail : ""); } catch {}
     throw new Error(msg);
   }
   const data = await res.json();
@@ -1661,7 +1661,7 @@ Type d'exercice demandé : ${type.trim() ? "« " + type.trim() + " » (respecte 
 ${(sup || "").trim() ? `Base l'exercice UNIQUEMENT sur les notions réellement présentes dans ce cours :\n"""${(sup || "").slice(0, 7000)}"""` : ""}`;
 
   async function generateOne(supOverride) {
-    const sup = supOverride != null ? supOverride : support;
+    const sup = typeof supOverride === "string" ? supOverride : support;
     setBusy(true); setErr(""); setExo(null); setVariants(null);
     try {
       const j = await askClaude({
