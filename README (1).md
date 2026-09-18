@@ -128,11 +128,19 @@ Bon à savoir :
 
 ## Si l'IA renvoie une erreur 404 / 410 (« model … end of life »)
 
-NVIDIA retire régulièrement d'anciens modèles. Quand ça arrive, l'appli affiche
-désormais le vrai message. Pour repartir : va sur https://build.nvidia.com/models,
-choisis un modèle marqué « Free Endpoint », ouvre-le, clique « View Code », copie
-son identifiant exact, et colle-le dans la constante `MODEL` (et `VISION_MODEL`
-si besoin) en haut de `api/chat.js`. Redéploie. C'est une modification d'une ligne.
+NVIDIA retire régulièrement des modèles. Quand ça arrive :
+
+1. Ouvre dans ton navigateur : `https://<ton-app>.vercel.app/api/models`
+   (remplace `<ton-app>` par l'adresse de ton site). Tu obtiens la liste des
+   modèles RÉELLEMENT disponibles sur ton compte, avec une section
+   `vision_possibles` pour la lecture d'images.
+2. Choisis un identifiant (de préférence NON daté, plus stable) et colle-le dans
+   `MODEL` en haut de `api/chat.js` (et un modèle `vision_possibles` dans
+   `VISION_MODEL` si tu utilises les photos).
+3. Commit, push, redéploie.
+
+C'est une modification d'une seule ligne, et tu n'as plus jamais besoin de deviner.
+
 
 ## Notes
 

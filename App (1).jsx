@@ -8,16 +8,16 @@
 
 // ─────────────────────────────────────────────────────────────
 //  POUR CHANGER DE MODÈLE : modifie UNIQUEMENT ces deux lignes.
-//  Copie l'identifiant EXACT depuis la page du modèle sur build.nvidia.com
-//  (bouton « View Code »). Les modèles sont parfois retirés (« end of life ») :
-//  si tu vois une erreur 404/410, viens ici copier l'ID d'un modèle encore actif.
 //
-//  Mistral Large 3 : excellent en français, et c'est un modèle VISION → il gère
-//  à la fois le texte ET la lecture des photos de cours.
-//  Alternatives texte (à coller à la place) : "deepseek-ai/deepseek-v3.2",
-//  "nvidia/nemotron-3-ultra-550b-a55b", "openai/gpt-oss-120b".
-const MODEL = "mistralai/mistral-large-3-675b-instruct-2512";        // texte / raisonnement
-const VISION_MODEL = "mistralai/mistral-large-3-675b-instruct-2512"; // lecture d'images
+//  ⚠️ NVIDIA retire régulièrement des modèles (« end of life »), surtout ceux
+//  dont le nom contient une date (…-2512, …-5.2…). Préfère un identifiant
+//  NON daté (plus stable).
+//
+//  👉 Pour connaître les modèles VIVANTS sur TON compte, ouvre dans ton
+//     navigateur :  https://<ton-app>.vercel.app/api/models
+//     puis copie un identifiant ci-dessous.
+const MODEL = "openai/gpt-oss-120b";                       // texte / raisonnement (stable, non daté)
+const VISION_MODEL = "meta/llama-3.2-11b-vision-instruct"; // lecture d'images
 // ─────────────────────────────────────────────────────────────
 
 const NVIDIA_URL = "https://integrate.api.nvidia.com/v1/chat/completions";
