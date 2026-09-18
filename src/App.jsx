@@ -1754,7 +1754,7 @@ ${(sup || "").trim() ? `Base l'exercice UNIQUEMENT sur les notions réellement p
           </div>
         </div>
         <div className="bar">
-          <button className="btn" onClick={multi ? generateVariants : generateOne} disabled={busy}>
+          <button className="btn" onClick={() => (multi ? generateVariants() : generateOne())} disabled={busy}>
             {busy ? <><span className="spin" /> Conception…</> : (multi ? "Proposer des formats" : "✨ Générer l'exercice")}
           </button>
         </div>
